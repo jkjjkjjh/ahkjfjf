@@ -3,37 +3,52 @@ const { cmd } = require("../command");
 const config = require('../config');
 const axios = require('axios');
 
-// Platform URLs and their APIs - Using new APIs
+// Platform URLs and their APIs
 const platforms = {
     youtube: {
-        pattern: /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-_]{11})/i,
+        pattern: /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11})(?:\S+)?/gi,
         api: "https://jawad-tech.vercel.app/download/ytdl",
         method: "video"
     },
     facebook: {
-        pattern: /(?:https?:\/\/)?(?:www\.)?(facebook\.com|fb\.watch)\/[^\s]+/i,
+        pattern: /(?:https?:\/\/)?(?:www\.)?(?:facebook\.com|fb\.watch|fb\.com)\/[^\s]+/gi,
         api: "https://jawad-tech.vercel.app/downloader",
         method: "video"
     },
     instagram: {
-        pattern: /(?:https?:\/\/)?(?:www\.)?(instagram\.com|instagr\.am)\/[^\s]+/i,
+        pattern: /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com|instagr\.am)\/(?:p|reel|tv|reels)\/[^\s\/]+/gi,
         api: "https://api-aswin-sparky.koyeb.app/api/downloader/igdl",
         method: "media"
     },
     tiktok: {
-        pattern: /(?:https?:\/\/)?(?:www\.)?(?:tiktok\.com|vt\.tiktok\.com)\/[^\s]+/i,
-        method: "video" // No api here, will use multiple APIs in handler
+        pattern: /(?:https?:\/\/)?(?:www\.)?(?:tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)\/[^\s]+/gi,
+        method: "video"
     },
     pinterest: {
-        pattern: /(?:https?:\/\/)?(?:www\.)?(pinterest\.com|pin\.it)\/[^\s]+/i,
+        pattern: /(?:https?:\/\/)?(?:www\.)?(?:pinterest\.com|pin\.it)\/[^\s]+/gi,
         api: "https://jawad-tech.vercel.app/download/pinterest",
         method: "media"
     }
 };
 
-// Create caption for downloads (same for all platforms)
+// Create caption for downloads
 const createCaption = () => {
     return `> *© ${config.BOT_NAME} Auto Downloader*`;
+};
+
+// Extract URL from text
+const extractUrl = (text, pattern) => {
+    if (!text) return null;
+    const match = text.match(pattern);
+    if (match && match[0]) {
+        let url = match[0].trim();
+        // Add https if missing
+        if (!url.startsWith('http')) {
+            url = 'https://' + url;
+        }
+        return url;
+    }
+    return null;
 };
 
 // No prefix auto-downloader handler
@@ -50,61 +65,67 @@ cmd({
     sender
 }) => {
     try {
+        // CHECK IF BODY EXISTS - IMPORTANT FIX
+        if (!body || typeof body !== 'string' || body.length < 10) return;
+
         // Direct check of config.AUTO_DOWNLOADER
-        if (config.AUTO_DOWNLOADER === "true") {
-            // Works for both inbox and groups - no additional check needed
+        const autoDownload = config.AUTO_DOWNLOADER?.toLowerCase() || "false";
+        
+        if (autoDownload === "true") {
+            // Works for both inbox and groups
         } 
-        else if (config.AUTO_DOWNLOADER === "inbox") {
-            if (isGroup) return; // Only works in inbox
+        else if (autoDownload === "inbox") {
+            if (isGroup) return;
         } 
-        else if (config.AUTO_DOWNLOADER === "group") {
-            if (!isGroup) return; // Only works in groups
+        else if (autoDownload === "group") {
+            if (!isGroup) return;
         } 
-        else if (config.AUTO_DOWNLOADER === "owner") {
-            if (!isCreator) return; // Only works for owner
+        else if (autoDownload === "owner") {
+            if (!isCreator) return;
         } 
         else {
-            // Anything else ("false", "off", "disable", or any other value) - DISABLE
-            return;
+            return; // Disabled
         }
         
         // Check if message contains any platform URL
         let matchedPlatform = null;
         let matchedUrl = null;
+        
         for (const [platform, data] of Object.entries(platforms)) {
-            const match = body.match(data.pattern);
-            if (match) {
+            const url = extractUrl(body, data.pattern);
+            if (url) {
                 matchedPlatform = platform;
-                matchedUrl = match[0];
+                matchedUrl = url;
+                console.log(`[AUTO-DL] Detected ${platform} URL: ${url}`);
                 break;
             }
         }
+        
         // Skip if no platform matched
         if (!matchedPlatform || !matchedUrl) return;
 
-        // Get platform config
         const caption = createCaption();
+        
         // Show processing reaction
         await client.sendMessage(from, { react: { text: '⏳', key: message.key } });
 
         try {
-            // Handle different platform types
+            // Handle download
             await handleApiDownload(client, from, matchedUrl, matchedPlatform, caption, message);
             await client.sendMessage(from, { react: { text: '✅', key: message.key } });
         } catch (apiError) {
-            console.error(`Auto-downloader error for ${matchedPlatform}:`, apiError);
+            console.error(`[AUTO-DL] Error for ${matchedPlatform}:`, apiError.message);
             await client.sendMessage(from, { react: { text: '❌', key: message.key } });
         }
 
     } catch (error) {
-        console.error("Auto-downloader error:", error);
+        console.error("[AUTO-DL] Main error:", error);
     }
 });
 
 // Handle API-based downloads
 async function handleApiDownload(client, from, url, platformType, caption, message) {
     try {
-        // Handle different platforms with their specific APIs
         switch (platformType) {
             case "instagram":
                 return await handleInstagram(client, from, url, caption, message);
@@ -120,174 +141,257 @@ async function handleApiDownload(client, from, url, platformType, caption, messa
                 throw new Error("Unsupported platform");
         }
     } catch (error) {
-        console.error(`API download error for ${platformType}:`, error);
+        console.error(`[AUTO-DL] API error for ${platformType}:`, error.message);
         throw error;
     }
 }
 
-// Instagram handler with new API
+// Instagram handler with multiple API fallbacks
 async function handleInstagram(client, from, url, caption, message) {
+    let mediaItems = [];
+    
+    // Try first API
     try {
         const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/igdl?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(apiUrl);
-
-        // Check response format for new API
-        if (!response.data?.status || !response.data.data?.length) {
-            throw new Error("Failed to fetch Instagram media");
-        }
+        const response = await axios.get(apiUrl, { timeout: 30000 });
         
-        const mediaData = response.data.data;
-
-        // Send all media items
-        for (const item of mediaData) {
-            const mediaType = item.type === 'video' ? 'video' : 'image';
-            
-            await client.sendMessage(from, {
-                [mediaType]: { url: item.url },
-                caption: caption
-            }, { quoted: message });
-            
-            // Small delay between sends to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        if (response.data?.status && response.data.data?.length) {
+            mediaItems = response.data.data;
         }
-        return;
-    } catch (error) {
-        console.error("Instagram download error:", error);
-        throw error;
+    } catch (e) {
+        console.log("[AUTO-DL] IG API 1 failed, trying backup...");
     }
-}
-
-// TikTok handler using multiple APIs (from your tiktok command)
-async function handleTikTok(client, from, url, caption, message) {
-    try {
-        let videoUrl;
-
-        // Try First API: https://jawad-tech.vercel.app/download/tiktok?url=
+    
+    // Try backup API if first failed
+    if (mediaItems.length === 0) {
         try {
-            const api1 = `https://jawad-tech.vercel.app/download/tiktok?url=${encodeURIComponent(url)}`;
-            const res1 = await axios.get(api1);
-            const data1 = res1.data;
-
-            if (data1?.status && data1?.result) {
-                videoUrl = data1.result;
-            } else {
-                throw new Error("First API failed");
-            }
-        } catch (api1Error) {
-            // Try Second API: https://jawad-tech.vercel.app/download/ttdl?url=
-            try {
-                const api2 = `https://jawad-tech.vercel.app/download/ttdl?url=${encodeURIComponent(url)}`;
-                const res2 = await axios.get(api2);
-                const data2 = res2.data;
-
-                if (data2?.status && data2?.result) {
-                    videoUrl = data2.result;
-                } else {
-                    throw new Error("Second API also failed");
+            const backupApi = `https://jawad-tech.vercel.app/download/instagram?url=${encodeURIComponent(url)}`;
+            const response = await axios.get(backupApi, { timeout: 30000 });
+            
+            if (response.data?.status && response.data.result) {
+                const result = response.data.result;
+                if (Array.isArray(result)) {
+                    mediaItems = result.map(item => ({
+                        url: item.url || item,
+                        type: (item.url || item).includes('.mp4') ? 'video' : 'image'
+                    }));
+                } else if (typeof result === 'string') {
+                    mediaItems = [{ url: result, type: result.includes('.mp4') ? 'video' : 'image' }];
                 }
-            } catch (api2Error) {
-                // Try Third API as fallback
-                const api3 = `https://api.deline.web.id/downloader/tiktok?url=${encodeURIComponent(url)}`;
-                const res3 = await axios.get(api3);
-                const data3 = res3.data;
-                
-                if (!data3?.status || !data3?.result?.download) {
-                    throw new Error("All TikTok APIs failed");
-                }
-                videoUrl = data3.result.download;
             }
+        } catch (e) {
+            console.log("[AUTO-DL] IG API 2 also failed");
         }
+    }
+    
+    if (mediaItems.length === 0) {
+        throw new Error("Failed to fetch Instagram media");
+    }
 
-        if (!videoUrl) {
-            throw new Error("No video URL found");
-        }
-
-        // Send TikTok video with simple caption
+    // Send all media items
+    for (const item of mediaItems) {
+        const mediaType = item.type === 'video' ? 'video' : 'image';
+        const mediaUrl = item.url || item;
+        
         await client.sendMessage(from, {
-            video: { url: videoUrl },
-            mimetype: 'video/mp4',
-            caption: caption
+            [mediaType]: { url: mediaUrl },
+            caption: caption,
+            mimetype: mediaType === 'video' ? 'video/mp4' : 'image/jpeg'
         }, { quoted: message });
         
-        return;
-
-    } catch (error) {
-        console.error("TikTok download error:", error);
-        throw error;
+        await new Promise(resolve => setTimeout(resolve, 1500));
     }
 }
 
-// YouTube handler
+// TikTok handler with multiple API fallbacks
+async function handleTikTok(client, from, url, caption, message) {
+    let videoUrl = null;
+
+    // API 1
+    try {
+        const api1 = `https://jawad-tech.vercel.app/download/tiktok?url=${encodeURIComponent(url)}`;
+        const res1 = await axios.get(api1, { timeout: 30000 });
+        
+        if (res1.data?.status && res1.data?.result) {
+            videoUrl = res1.data.result;
+        }
+    } catch (e) {
+        console.log("[AUTO-DL] TikTok API 1 failed");
+    }
+    
+    // API 2
+    if (!videoUrl) {
+        try {
+            const api2 = `https://jawad-tech.vercel.app/download/ttdl?url=${encodeURIComponent(url)}`;
+            const res2 = await axios.get(api2, { timeout: 30000 });
+            
+            if (res2.data?.status && res2.data?.result) {
+                videoUrl = res2.data.result;
+            }
+        } catch (e) {
+            console.log("[AUTO-DL] TikTok API 2 failed");
+        }
+    }
+    
+    // API 3
+    if (!videoUrl) {
+        try {
+            const api3 = `https://api.deline.web.id/downloader/tiktok?url=${encodeURIComponent(url)}`;
+            const res3 = await axios.get(api3, { timeout: 30000 });
+            
+            if (res3.data?.status && res3.data?.result?.download) {
+                videoUrl = res3.data.result.download;
+            }
+        } catch (e) {
+            console.log("[AUTO-DL] TikTok API 3 failed");
+        }
+    }
+
+    if (!videoUrl) {
+        throw new Error("All TikTok APIs failed");
+    }
+
+    await client.sendMessage(from, {
+        video: { url: videoUrl },
+        mimetype: 'video/mp4',
+        caption: caption
+    }, { quoted: message });
+}
+
+// YouTube handler with fallback
 async function handleYouTube(client, from, url, caption, message) {
+    let videoUrl = null;
+    let videoTitle = "";
+    
+    // Try main API
     try {
         const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(apiUrl);
-
-        if (!response.data?.status || !response.data.result?.mp4) {
-            throw new Error("Failed to fetch YouTube video");
+        const response = await axios.get(apiUrl, { timeout: 60000 });
+        
+        if (response.data?.status && response.data.result?.mp4) {
+            videoUrl = response.data.result.mp4;
+            videoTitle = response.data.result.title || "";
         }
-        
-        await client.sendMessage(from, {
-            video: { url: response.data.result.mp4 },
-            caption: caption
-        }, { quoted: message });
-        
-        return;
-    } catch (error) {
-        console.error("YouTube download error:", error);
-        throw error;
+    } catch (e) {
+        console.log("[AUTO-DL] YouTube API 1 failed");
     }
+    
+    // Try backup API
+    if (!videoUrl) {
+        try {
+            const backupApi = `https://api.deline.web.id/downloader/youtube?url=${encodeURIComponent(url)}`;
+            const response = await axios.get(backupApi, { timeout: 60000 });
+            
+            if (response.data?.status && response.data.result?.video) {
+                videoUrl = response.data.result.video;
+                videoTitle = response.data.result.title || "";
+            }
+        } catch (e) {
+            console.log("[AUTO-DL] YouTube API 2 failed");
+        }
+    }
+
+    if (!videoUrl) {
+        throw new Error("Failed to fetch YouTube video");
+    }
+    
+    const finalCaption = videoTitle ? `*${videoTitle}*\n\n${caption}` : caption;
+    
+    await client.sendMessage(from, {
+        video: { url: videoUrl },
+        mimetype: 'video/mp4',
+        caption: finalCaption
+    }, { quoted: message });
 }
 
-// Facebook handler
+// Facebook handler with fallback
 async function handleFacebook(client, from, url, caption, message) {
+    let videoUrl = null;
+    
+    // Try main API
     try {
         const apiUrl = `https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(apiUrl);
-
-        if (!response.data?.status || !response.data.result?.length) {
-            throw new Error("Failed to fetch Facebook video");
+        const response = await axios.get(apiUrl, { timeout: 30000 });
+        
+        if (response.data?.status && response.data.result?.length) {
+            const video = response.data.result.find(v => v.quality === "HD") || 
+                         response.data.result.find(v => v.quality === "SD") ||
+                         response.data.result[0];
+            if (video?.url) {
+                videoUrl = video.url;
+            }
         }
-        
-        const video = response.data.result.find(v => v.quality === "HD") || 
-                     response.data.result.find(v => v.quality === "SD");
-                     
-        if (!video?.url) {
-            throw new Error("No video URL found");
-        }
-        
-        await client.sendMessage(from, {
-            video: { url: video.url },
-            caption: caption
-        }, { quoted: message });
-        
-        return;
-    } catch (error) {
-        console.error("Facebook download error:", error);
-        throw error;
+    } catch (e) {
+        console.log("[AUTO-DL] Facebook API 1 failed");
     }
+    
+    // Try backup API
+    if (!videoUrl) {
+        try {
+            const backupApi = `https://api.deline.web.id/downloader/facebook?url=${encodeURIComponent(url)}`;
+            const response = await axios.get(backupApi, { timeout: 30000 });
+            
+            if (response.data?.status && response.data.result?.hd) {
+                videoUrl = response.data.result.hd || response.data.result.sd;
+            }
+        } catch (e) {
+            console.log("[AUTO-DL] Facebook API 2 failed");
+        }
+    }
+
+    if (!videoUrl) {
+        throw new Error("Failed to fetch Facebook video");
+    }
+    
+    await client.sendMessage(from, {
+        video: { url: videoUrl },
+        mimetype: 'video/mp4',
+        caption: caption
+    }, { quoted: message });
 }
 
-// Pinterest handler
+// Pinterest handler with fallback
 async function handlePinterest(client, from, url, caption, message) {
+    let mediaUrl = null;
+    let isVideo = false;
+    
+    // Try main API
     try {
         const apiUrl = `https://jawad-tech.vercel.app/download/pinterest?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(apiUrl);
-
-        if (!response.data?.status || !response.data.result?.url) {
-            throw new Error("Failed to fetch Pinterest media");
+        const response = await axios.get(apiUrl, { timeout: 30000 });
+        
+        if (response.data?.status && response.data.result?.url) {
+            mediaUrl = response.data.result.url;
+            isVideo = response.data.result.type === 'video';
         }
-        
-        const isVideo = response.data.result.type === 'video';
-        
-        await client.sendMessage(from, {
-            [isVideo ? 'video' : 'image']: { url: response.data.result.url },
-            caption: caption
-        }, { quoted: message });
-        
-        return;
-    } catch (error) {
-        console.error("Pinterest download error:", error);
-        throw error;
+    } catch (e) {
+        console.log("[AUTO-DL] Pinterest API 1 failed");
     }
+    
+    // Try backup API
+    if (!mediaUrl) {
+        try {
+            const backupApi = `https://api.deline.web.id/downloader/pinterest?url=${encodeURIComponent(url)}`;
+            const response = await axios.get(backupApi, { timeout: 30000 });
+            
+            if (response.data?.status && response.data.result) {
+                mediaUrl = response.data.result.url || response.data.result;
+                isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('video');
+            }
+        } catch (e) {
+            console.log("[AUTO-DL] Pinterest API 2 failed");
+        }
+    }
+
+    if (!mediaUrl) {
+        throw new Error("Failed to fetch Pinterest media");
+    }
+    
+    await client.sendMessage(from, {
+        [isVideo ? 'video' : 'image']: { url: mediaUrl },
+        mimetype: isVideo ? 'video/mp4' : 'image/jpeg',
+        caption: caption
+    }, { quoted: message });
 }
+
+console.log("[AUTO-DL] Auto Downloader Plugin Loaded ✓");
