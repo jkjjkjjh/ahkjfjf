@@ -14,12 +14,12 @@ cmd({
 },
 async (conn, mek, m, { from, quoted, reply }) => {
     try {
-        // Must reply to an image
+
         if (!quoted || !quoted.imageMessage) {
             return reply("🖼️ Please reply to an image with `.toanime`");
         }
 
-        await reply("⏳ Converting image to Anime style, please wait...");
+        await reply("⏳ Converting image to Anime style...");
 
         // Download image from WhatsApp
         const stream = await downloadContentFromMessage(
@@ -32,7 +32,7 @@ async (conn, mek, m, { from, quoted, reply }) => {
             buffer = Buffer.concat([buffer, chunk]);
         }
 
-        // Upload image to temporary hosting
+        // Upload to tmpfiles
         const form = new FormData();
         form.append('file', buffer, {
             filename: 'anime.jpg',
@@ -50,21 +50,40 @@ async (conn, mek, m, { from, quoted, reply }) => {
             'tmpfiles.org/dl/'
         );
 
-        // Call Your Anime API
-        const apiUrl = `https://api-faa.my.id/faa/toanime?url=${encodeURIComponent(imageUrl)}`;
+        // Call Anime API
+        const apiRes = await axios.get(
+            `https://api-faa.my.id/faa/toanime?url=${encodeURIComponent(imageUrl)}`,
+            { timeout: 60000 }
+        );
 
-        // Send result image directly
+        // If API returns direct image URL
+        let finalImageUrl;
+
+        if (typeof apiRes.data === "string") {
+            finalImageUrl = apiRes.data;
+        } else if (apiRes.data?.result) {
+            finalImageUrl = apiRes.data.result;
+        } else {
+            return reply("❌ API did not return a valid image.");
+        }
+
+        // Download generated image as buffer
+        const finalImage = await axios.get(finalImageUrl, {
+            responseType: 'arraybuffer'
+        });
+
+        // Send image directly to WhatsApp
         await conn.sendMessage(
             from,
             {
-                image: { url: apiUrl },
-                caption: "> 🎨 Anime Image Created Successfully by 𝐑𝐔𝐇𝐈𝐈𝐈 😻🎀💗"
+                image: Buffer.from(finalImage.data),
+                caption: "> 🎨 Anime Image Generated Successfully by 𝐑𝐔𝐇𝐈𝐈𝐈 😻🎀💗"
             },
             { quoted: m }
         );
 
     } catch (err) {
-        console.error("TOANIME ERROR:", err);
-        reply("❌ Anime conversion failed. Please try again.");
+        console.error("TOANIME ERROR:", err.response?.data || err.message);
+        reply("❌ Anime conversion failed. API error occurred.");
     }
 });
