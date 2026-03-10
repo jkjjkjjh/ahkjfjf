@@ -37,6 +37,8 @@ cmd({
         let title = 'Unknown YouTube Song';
         let thumbnail = '';
         let duration = '';
+        let author = 'Unknown';
+        let views = 0;
 
         if (!isYoutubeLink) {
             const search = await yts(query);
@@ -62,6 +64,8 @@ cmd({
             title = video.title || title;
             thumbnail = video.thumbnail || '';
             duration = video.timestamp || '';
+            author = video.author?.name || 'Unknown';
+            views = video.views || 0;
         } else {
             const videoId = query.match(/([a-zA-Z0-9_-]{11})/i)?.[1];
             const search = await yts({ videoId: videoId });
@@ -71,6 +75,8 @@ cmd({
                 thumbnail = search.thumbnail || '';
                 duration = search.timestamp || '';
                 videoUrl = search.url || query;
+                author = search.author?.name || 'Unknown';
+                views = search.views || 0;
             }
         }
 
@@ -88,17 +94,9 @@ cmd({
             result.audio ||
             result.link;
 
-        title =
-            result.title ||
-            result.name ||
-            title ||
-            'Unknown YouTube Song';
-
-        thumbnail =
-            result.thumbnail ||
-            result.image ||
-            thumbnail ||
-            '';
+        // Update title and thumbnail from API if available
+        title = result.title || result.name || title || 'Unknown YouTube Song';
+        thumbnail = result.thumbnail || result.image || thumbnail || '';
 
         if (!audioUrl) {
             await conn.sendMessage(from, {
@@ -120,51 +118,31 @@ cmd({
 
         const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_').trim();
 
+        // ✅ First: Send Thumbnail Image with Song Info
+        await conn.sendMessage(from, {
+            image: { url: thumbnail },
+            caption: `🎧 *DML AUDIO DOWNLOADER*
+╭━━━━━━━━━━━━━━━⬣
+┃ 🎵 *Title:* ${safeTitle}
+┃ 👤 *Author:* ${author}
+┃ ⏱️ *Duration:* ${duration}
+┃ 👁️ *Views:* ${views.toLocaleString()}
+┃ 📥 *Status:* Downloading...
+╰━━━━━━━━━━━━━━━⬣
+> ⚡ *Powered by DML-MD*`
+        }, { quoted: mek });
+
+        // ✅ Second: Send Audio File
+        await conn.sendMessage(from, {
+            audio: { url: audioUrl },
+            mimetype: 'audio/mpeg',
+            fileName: `${safeTitle}.mp3`
+        }, { quoted: mek });
+
+        // ✅ Success Reaction
         await conn.sendMessage(from, {
             react: { text: '✅', key: m.key }
         });
-
-        // Send Audio with Thumbnail Context
-        await conn.sendMessage(
-            from,
-            {
-                audio: { url: audioUrl },
-                mimetype: 'audio/mpeg',
-                fileName: `${safeTitle}.mp3`,
-                ptt: false,
-                contextInfo: thumbnail
-                    ? {
-                        externalAdReply: {
-                            title: safeTitle.substring(0, 40),
-                            body: duration ? `Duration: ${duration}` : 'DML-MD',
-                            thumbnailUrl: thumbnail,
-                            sourceUrl: videoUrl,
-                            mediaType: 1,
-                            renderLargerThumbnail: true,
-                        },
-                    }
-                    : undefined,
-            },
-            { quoted: mek }
-        );
-
-        // Send as Document
-        await conn.sendMessage(
-            from,
-            {
-                document: { url: audioUrl },
-                mimetype: 'audio/mpeg',
-                fileName: `${safeTitle}.mp3`,
-                caption: `╭━〔 🎶 NOW PLAYING 〕━⬣
-┃ 🎧 ${safeTitle}
-┃ ${duration ? `⏱️ ${duration}\n┃ ` : ''}⬇️ Download completed successfully
-┃ 📀 Format: MP3
-┃ 🎚️ Quality: 128kbps
-╰━━━━━━━━━━━━━━━━━━⬣
-> ⚡ Powered by Dml`,
-            },
-            { quoted: mek }
-        );
 
     } catch (error) {
         console.error('Play error:', error);
