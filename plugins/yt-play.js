@@ -14,16 +14,10 @@ cmd({
         const query = q ? q.trim() : '';
 
         if (!query) {
-            return await reply(`╭━〔 🎵 DML MUSIC ENGINE 〕━⬣
-┃ ⚠️ No input detected.
-┃
-┃ ➤ Send a song name or YouTube link.
-┃
-┃ ✦ Example:
-┃   .play komasava
-┃   .play https://youtu.be/dQw4w9WgXcQ
+            return await reply(`╭━〔 🎵MUSIC ENGINE 〕━⬣
+┃ ⚠️ .play pal pal 
 ╰━━━━━━━━━━━━━━━━━━⬣
-> 🚀 Powered by DARKZONE-MD Tech`);
+> 🚀 DARKZONE-MD`);
         }
 
         await conn.sendMessage(from, {
