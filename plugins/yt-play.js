@@ -23,7 +23,7 @@ cmd({
 ┃   .play komasava
 ┃   .play https://youtu.be/dQw4w9WgXcQ
 ╰━━━━━━━━━━━━━━━━━━⬣
-> 🚀 Powered by Dml Tech`);
+> 🚀 Powered by DARKZONE-MD Tech`);
         }
 
         await conn.sendMessage(from, {
@@ -121,7 +121,7 @@ cmd({
         // ✅ First: Send Thumbnail Image with Song Info
         await conn.sendMessage(from, {
             image: { url: thumbnail },
-            caption: `🎧 *DML AUDIO DOWNLOADER*
+            caption: `🎧 *DARKZONE-MD AUDIO DOWNLOADER*
 ╭━━━━━━━━━━━━━━━⬣
 ┃ 🎵 *Title:* ${safeTitle}
 ┃ 👤 *Author:* ${author}
@@ -129,7 +129,7 @@ cmd({
 ┃ 👁️ *Views:* ${views.toLocaleString()}
 ┃ 📥 *Status:* Downloading...
 ╰━━━━━━━━━━━━━━━⬣
-> ⚡ *Powered by DML-MD*`
+> ⚡ *Powered by DARKZONE-MD*`
         }, { quoted: mek });
 
         // ✅ Second: Send Audio File
@@ -159,6 +159,6 @@ cmd({
 ┃
 ┃ Please try again later.
 ╰━━━━━━━━━━━━━━━━━━⬣
-> 🛠️ DML-MD System`);
+> 🛠️ DARKZONE-MD System`);
     }
 });
