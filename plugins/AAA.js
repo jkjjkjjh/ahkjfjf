@@ -129,7 +129,7 @@ cmd({
 ┃ 👁️ *Views:* ${views.toLocaleString()}
 ┃ 📥 *Status:* Downloading...
 ╰━━━━━━━━━━━━━━━⬣
-> ⚡ *Powered by DML-MD*`
+> ⚡ *Powered by DARKZONE-MD*`
         }, { quoted: mek });
 
         // ✅ Second: Send Audio File
@@ -159,6 +159,6 @@ cmd({
 ┃
 ┃ Please try again later.
 ╰━━━━━━━━━━━━━━━━━━⬣
-> 🛠️ DML-MD System`);
+> 🛠️ DARKZONE-MD System`);
     }
 });
