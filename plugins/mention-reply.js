@@ -11,7 +11,7 @@ cmd({
 
     // Add your Catbox video URLs here (10-15 videos)
     const videoClips = [
-      "https://files.catbox.moe/video1.mp4",
+      "https://files.catbox.moe/zakbt5.mp4",
       "https://files.catbox.moe/video2.mp4",
       "https://files.catbox.moe/video3.mp4",
       "https://files.catbox.moe/video4.mp4",
