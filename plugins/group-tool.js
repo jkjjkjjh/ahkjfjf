@@ -1,18 +1,12 @@
 const { cmd } = require('../command');
+const config = require('../config');
 
-// Function to check if sender is the Bot Owner (who deployed the bot)
-function isBotOwner(conn, senderId) {
-    const botId = conn.user?.id || '';
-    const botLid = conn.user?.lid || '';
+// Function to check if sender is Bot Owner (from config.OWNER_NUMBER)
+function isBotOwner(senderId) {
+    // Get owner number from config
+    const ownerNumber = config.OWNER_NUMBER || '';
     
-    const botNumber = botId.includes(':') 
-        ? botId.split(':')[0] 
-        : (botId.includes('@') ? botId.split('@')[0] : botId);
-    
-    const botLidNumeric = botLid.includes(':') 
-        ? botLid.split(':')[0] 
-        : (botLid.includes('@') ? botLid.split('@')[0] : botLid);
-    
+    // Extract sender's phone number
     let senderNumber = senderId;
     if (senderId.includes(':')) {
         senderNumber = senderId.split(':')[0];
@@ -20,12 +14,21 @@ function isBotOwner(conn, senderId) {
         senderNumber = senderId.split('@')[0];
     }
     
-    return (
-        senderNumber === botNumber ||
-        senderNumber === botLidNumeric ||
-        senderId === botId ||
-        senderId === botLid
-    );
+    // Clean the numbers (remove any non-digit characters)
+    const cleanSender = senderNumber.replace(/\D/g, '');
+    const cleanOwner = ownerNumber.replace(/\D/g, '');
+    
+    // Check if sender matches owner
+    if (!cleanOwner || !cleanSender) return false;
+    
+    // Support multiple owners (comma separated)
+    const owners = cleanOwner.split(',').map(o => o.trim());
+    
+    return owners.some(owner => {
+        return cleanSender === owner || 
+               cleanSender.includes(owner) || 
+               owner.includes(cleanSender);
+    });
 }
 
 // Function to check if bot is admin
@@ -142,9 +145,9 @@ async (Void, citel, text) => {
             return citel.reply("❌ Could not identify sender.");
         }
         
-        // Only Bot Owner can use
-        if (!isBotOwner(Void, senderId)) {
-            return citel.reply(`❌ *ACCESS DENIED!*\n\n⚠️ Only *Bot Owner* can use this command!`);
+        // Only Bot Owner can use (from config.OWNER_NUMBER)
+        if (!isBotOwner(senderId)) {
+            return citel.reply(`❌ *ACCESS DENIED!*\n\n⚠️ Only *Bot Owner* can use this command!\n\n_This command is restricted to bot owner only._`);
         }
         
         const botIsAdmin = await checkBotAdmin(Void, citel.chat);
