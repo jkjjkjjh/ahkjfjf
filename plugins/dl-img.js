@@ -4,6 +4,7 @@ const { cmd } = require('../command');
 
 function getGoogleImageSearch(query) {
     const apis = [
+        `https://api.giftedtech.co.ke/api/search/googleimage?apikey=gifted&query=${encodeURIComponent(query)}`,
         `https://jawad-tech.vercel.app/search/gimage?q=${encodeURIComponent(query)}`,
         `https://api.delirius.xyz/search/gimage?query=${encodeURIComponent(query)}`,
         `https://api.siputzx.my.id/api/images?query=${encodeURIComponent(query)}`
@@ -17,16 +18,24 @@ function getGoogleImageSearch(query) {
                 
                 // Handle different response structures
                 let urls = []
-                if (Array.isArray(data?.result)) {
-                    // For jawad-tech API (uses "result" array)
-                    urls = data.result.map(d => d.url).filter(u => typeof u === 'string' && u.startsWith('http'))
-                } else if (Array.isArray(data?.data)) {
-                    // For other APIs (uses "data" array)
-                    urls = data.data.map(d => d.url).filter(u => typeof u === 'string' && u.startsWith('http'))
+                
+                // For giftedtech API (uses "results" array with direct URL strings)
+                if (Array.isArray(data?.results)) {
+                    urls = data.results.filter(u => typeof u === 'string' && u.startsWith('http'))
+                }
+                // For jawad-tech API (uses "result" array with objects containing url)
+                else if (Array.isArray(data?.result)) {
+                    urls = data.result.map(d => typeof d === 'string' ? d : d.url).filter(u => typeof u === 'string' && u.startsWith('http'))
+                }
+                // For other APIs (uses "data" array)
+                else if (Array.isArray(data?.data)) {
+                    urls = data.data.map(d => typeof d === 'string' ? d : d.url).filter(u => typeof u === 'string' && u.startsWith('http'))
                 }
                 
                 if (urls.length) return urls
-            } catch {}
+            } catch (err) {
+                console.log(`API failed: ${url}`)
+            }
         }
         return []
     }
@@ -52,12 +61,12 @@ cmd({
     try {
         if (!q) return reply(`❀ Please enter a text to search for an Image.`)
 
-        await reply("*SEARCHING FOR IMAGES...*")
+        await reply("*🔍 SEARCHING FOR IMAGES...*")
 
         const res = await getGoogleImageSearch(q)
         const urls = await res.getAll()
         
-        if (urls.length < 2) return reply('✧ Not enough images found for an album.')
+        if (urls.length < 1) return reply('✧ No images found for your query.')
         
         const medias = urls.slice(0, 10).map(url => ({ image: { url } }))
         const caption = `> DARKZONE-MD RESULTS FOR: ${q}`
